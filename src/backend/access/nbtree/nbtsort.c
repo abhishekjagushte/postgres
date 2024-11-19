@@ -63,6 +63,8 @@
 #include "utils/sortsupport.h"
 #include "utils/tuplesort.h"
 
+#include "lsm_meta_data.h"
+static bool lsm_tree_flag = true;
 
 /* Magic numbers for parallel state sharing */
 #define PARALLEL_KEY_BTREE_SHARED		UINT64CONST(0xA000000000000001)
@@ -348,6 +350,47 @@ btbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 		ResetUsage();
 	}
 #endif							/* BTREE_BUILD_STATS */
+
+    char * relation_name = heap->rd_rel->relname.data;
+    char check[3]={relation_name[0],relation_name[1],relation_name[2]};
+    if(lsm_tree_flag && (strcmp(check,"pg_")))
+    {
+
+        //  ADDED CODE : Get pointer to just next of BT meta data and write lsm meta data
+        printf("end of btbuild method, saving metadata now\n");
+        // Get Metapage buffer for the btree index with access type write
+        Buffer buffer_t = _bt_getbuf(index,BTREE_METAPAGE,BT_WRITE);
+        // Get MetaPageData
+        Page page_t = BufferGetPage(buffer_t);
+        BTMetaPageData* meta_t =BTPageGetMeta(page_t);
+        // get pointer just after BT meta data and fill lsm meta data there
+        struct lsm_meta_data *lsm_md = (struct lsm_meta_data *)(meta_t +1);
+
+        // change page header lower pointer and mark buffer as dirty
+        PageHeader pageHeader = (PageHeader)page_t;
+        pageHeader->pd_lower = pageHeader->pd_lower +sizeof(struct lsm_meta_data);
+        MarkBufferDirty(buffer_t);
+
+        printf("lsm meta data at %x to %x\n",lsm_md,lsm_md+sizeof(struct lsm_meta_data));
+        // set lsm meta data
+        lsm_md->l0_size=0;
+        lsm_md->l1_size=0;
+        lsm_md->l2_size=0;
+        lsm_md->l0_id = index->rd_id;
+        lsm_md->l1_id = InvalidOid;
+        lsm_md->l2_id = InvalidOid;
+        // identify table on which relation is built
+        lsm_md->rel_id = index->rd_index->indrelid;
+        lsm_md->l0_max_size =5;
+        lsm_md->l1_max_size =10;
+
+        printf("L0 created oid %d\n",lsm_md->l0_id);
+        lsm_md->l0_size = (int)result->index_tuples;
+        printf("Tuples indexed by build %d\n",lsm_md->l0_size);
+
+        // release the buffer
+        _bt_relbuf(index,buffer_t);
+    }
 
 	return result;
 }
