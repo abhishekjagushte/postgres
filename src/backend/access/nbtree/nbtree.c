@@ -209,31 +209,12 @@ btbuildempty(Relation index)
 	smgrimmedsync(RelationGetSmgr(index), INIT_FORKNUM);
 }
 
-/*
- *	btinsert() -- insert an index tuple into a btree.
- *
- *		Descend the tree recursively, find the appropriate location for our
- *		new tuple, and put it there.
- */
-bool
-btinsert(Relation rel, Datum *values, bool *isnull,
-		 ItemPointer ht_ctid, Relation heapRel,
-		 IndexUniqueCheck checkUnique,
-		 bool indexUnchanged,
-		 IndexInfo *indexInfo)
-{
-	bool		result;
-	IndexTuple	itup;
 
-	/* generate an index tuple */
-	itup = index_form_tuple(RelationGetDescr(rel), values, isnull);
-	itup->t_tid = *ht_ctid;
+void lsm_insert(Relation rel, Relation heapRel) {
+	printf("lsm_insert\n");
 
-	result = _bt_doinsert(rel, itup, checkUnique, indexUnchanged, heapRel);
 
-	pfree(itup);
-
-    // ADDED CODE
+	// ADDED CODE
     char * relation_name = heapRel->rd_rel->relname.data;
     char check[3]={relation_name[0],relation_name[1],relation_name[2]};
     if(lsm_tree_flag && (strcmp(check,"pg_")))
@@ -381,6 +362,35 @@ btinsert(Relation rel, Datum *values, bool *isnull,
         // print sizes
         printf("Sizes = L0 : %d  L1 : %d  L2  %d\n",lsm_md->l0_size,lsm_md->l1_size, lsm_md->l2_size);
     }
+}
+
+
+/*
+ *	btinsert() -- insert an index tuple into a btree.
+ *
+ *		Descend the tree recursively, find the appropriate location for our
+ *		new tuple, and put it there.
+ */
+bool
+btinsert(Relation rel, Datum *values, bool *isnull,
+		 ItemPointer ht_ctid, Relation heapRel,
+		 IndexUniqueCheck checkUnique,
+		 bool indexUnchanged,
+		 IndexInfo *indexInfo)
+{
+	bool		result;
+	IndexTuple	itup;
+
+	/* generate an index tuple */
+	itup = index_form_tuple(RelationGetDescr(rel), values, isnull);
+	itup->t_tid = *ht_ctid;
+
+	result = _bt_doinsert(rel, itup, checkUnique, indexUnchanged, heapRel);
+
+	pfree(itup);
+
+	lsm_insert(rel, heapRel);
+
 	return result;
 }
 
